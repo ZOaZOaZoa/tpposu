@@ -1,0 +1,16 @@
+# depslib dependency file v1.0
+1487012148 source:f:\111\practice_example\plant.c
+	<math.h>
+	<time.h>
+	<stdio.h>
+	<stdlib.h>
+	"plant.h"
+
+1487011920 f:\111\practice_example\plant.h
+
+1550148131 source:f:\111\practice_example\main.cpp
+	"plant.h"
+	<cmath>
+	<vector>
+	<iostream>
+
