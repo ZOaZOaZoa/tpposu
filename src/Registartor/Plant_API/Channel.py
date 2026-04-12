@@ -20,13 +20,14 @@ class Preprocessing(Enum):
     No = auto()
 
 class Channel:
-    def __init__(self, channel_num: int, plant: Plant, preproccess_function: str, additional_params: tuple[float]):
+    def __init__(self, channel_num: int, plant: Plant, preproccess_function: Preprocessing, additional_params: tuple[float]):
         self.channel = channel_num
         self.plant = plant
         self.additional_params = additional_params
         self.raw_measurements = []
         self.current_measurement = []
         self.control_fail_callbacks: list[Callable[[], None]] = []
+        self.output_size = 2 if preproccess_function == Preprocessing.Mean else 1
 
         functions = {
             Preprocessing.Norm: self._norm,

@@ -24,13 +24,13 @@ if __name__ == '__main__':
         (2, Preprocessing.No,               ('CH2_RAW',),               tuple()),
         (3, Preprocessing.No,               ('CH3_RAW',),               tuple()),
         (4, Preprocessing.PosControl,       ('CH4_RAW',),               (0.0, 1.0)),
-        (5, Preprocessing.Norm,             ('CH1_NORM',),              (2.2, 1.5)),
+        (5, Preprocessing.Norm,             ('CH5_NORM',),              (2.2, 1.5)),
         (6, Preprocessing.Mean,             ('CH6_MEAN', 'CH6_DISP'),   tuple()),
-        (9, Preprocessing.StableControl,    ('CH1_RAW',),               tuple()),
-        (16, Preprocessing.No,              ('CH1_RAW',),               tuple()),
-        (46, Preprocessing.No,              ('CH1_RAW',),               tuple()),
-        (66, Preprocessing.Formula,         ('CH1_RAW',),               (86.0, 210.0)),
-        (76, Preprocessing.StableControl,   ('CH1_RAW',),               tuple()),
+        (9, Preprocessing.StableControl,    ('CH9_VAL',),               tuple()),
+        (16, Preprocessing.No,              ('CH16_RAW',),              tuple()),
+        (46, Preprocessing.No,              ('CH46_RAW',),              tuple()),
+        (66, Preprocessing.Formula,         ('CH66_FUNC',),             (86.0, 210.0)),
+        (76, Preprocessing.StableControl,   ('CH76_VAL',),              tuple()),
     ]
 
     TKI_steps_params = [
@@ -76,4 +76,4 @@ if __name__ == '__main__':
         registrator.measure_frame()
         print(registrator.last_frame)
     
-    
+    registrator.save_to_db('test.sqlite')

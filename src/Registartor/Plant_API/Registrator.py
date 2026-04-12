@@ -48,8 +48,11 @@ class Registrator:
     def save_frame(self):
         frame = []
         for channel in self.channels.values():
-            channel_measurement = channel.current_measurement 
-            frame += channel_measurement
+            channel_measurement = channel.current_measurement
+            if len(channel_measurement) != channel.output_size:
+                frame += [None, ] * channel.output_size
+            else:
+                frame += channel_measurement
         
         self.last_frame = tuple(frame)
         self.frames.append(self.last_frame)
@@ -60,11 +63,13 @@ class Registrator:
         try:
             yield conn
             conn.commit()
+        except Exception as e:
+            print(e)
         finally:
             conn.close()
 
     def save_to_db(self, db_path: str):
-        columns_names = self.channels_names.values()
+        columns_names = self.channels_names
         rows = self.frames
 
         with self.get_db_connection(db_path) as conn:
@@ -84,8 +89,12 @@ class Registrator:
             
             # Вставка данных
             placeholders = ', '.join('?' * len(columns_names))
+            sql = f'INSERT INTO {TABLE_NAME} ({', '.join(columns_names)}) VALUES ({placeholders})'
+            print(sql)
+            print()
+            print(len(rows[0]))
             cursor.executemany(
-                f'INSERT INTO {TABLE_NAME} ({columns_names}) VALUES ({placeholders})',
+                sql,
                 rows
             )
 
