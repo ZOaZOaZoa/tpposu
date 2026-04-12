@@ -2,13 +2,15 @@ import ctypes
 import os
 from pathlib import Path
 
+src_code_path = Path(__file__).parent.parent.parent
+
 match os.name:
     case 'nt':
         # Windows
-        PLANT_LIB_PATH = Path(__file__).parent / 'object' / 'bin' / 'plant.dll'
+        PLANT_LIB_PATH = src_code_path / 'object' / 'bin' / 'plant.dll'
     case 'posix':
         # Linux
-        PLANT_LIB_PATH = Path(__file__).parent / 'object' / 'bin' / 'libplant.so'
+        PLANT_LIB_PATH = src_code_path / 'object' / 'bin' / 'libplant.so'
 
 
 class Plant:
