@@ -24,14 +24,14 @@ class Registrator:
         self.channels: dict[int, Channel] = dict()
         self.channels_names: list[str] = []
         for param in channels_params:
-            self.channels[param.number] = Channel(param.number, plant, param.preprocessing)
+            self.channels[param.number] = Channel(param.number, plant, param.preprocessing, param.additional_params)
             # Добавляем названия столбцов для значений, которые улетят в БД
             for column_in_db in param.columns_in_db:
                 self.channels_names.append(column_in_db)
 
         self.tki_steps = tki_steps
 
-    def measure(self):
+    def measure_frame(self):
         for tki_step in self.tki_steps:
             channel_num = tki_step.channel
             

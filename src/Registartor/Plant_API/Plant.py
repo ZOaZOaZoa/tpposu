@@ -38,4 +38,4 @@ class Plant:
         return self.lib.plant_measure(channel, self.plant)
 
     def control(self, channel: int, control: float) -> None:
-        self.lib.plant_control(channel, control, plant)
+        self.lib.plant_control(channel, control, self.plant)
