@@ -1,4 +1,5 @@
 from .Plant import Plant
-from .registrator import Channel, Frame
+from .Channel import Channel
+from .Registrator import Registrator
 
-__all__ = ['Plant', 'Channel', 'Frame']
+__all__ = ['Plant', 'Channel', 'Registrator']

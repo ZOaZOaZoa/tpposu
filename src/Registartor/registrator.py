@@ -1,7 +1,7 @@
-from Plant_API import Plant, Frame, Channel
+from Plant_API import Plant, Registrator, Channel
 
-def measure_frame(channels_params: list[tuple[int, str]], plant: Plant) -> Frame:
-    frame = Frame(channels_params, plant)
+def measure_frame(channels_params: list[tuple[int, str]], plant: Plant) -> Registrator:
+    frame = Registrator(channels_params, plant)
     frame.measure()
     return frame
 
