@@ -4,12 +4,6 @@ from typing import Callable
 from dataclasses import dataclass
 import statistics
 
-@dataclass
-class ChannelParam:
-    number: int
-    preprocessing: Preprocessing
-    columns_in_db: tuple[str]
-    additional_params: tuple[float]
 
 class Preprocessing(Enum):
     Norm = auto()
@@ -18,6 +12,13 @@ class Preprocessing(Enum):
     Mean = auto()
     Formula = auto()
     No = auto()
+
+@dataclass
+class ChannelParam:
+    number: int
+    preprocessing: Preprocessing
+    columns_in_db: tuple[str]
+    additional_params: tuple[float]
 
 class Channel:
     def __init__(self, channel_num: int, plant: Plant, preproccess_function: Preprocessing, additional_params: tuple[float]):
@@ -42,6 +43,8 @@ class Channel:
     def measure(self):
         measurement = self.plant.measure(self.channel)
         self.raw_measurements.append(measurement)
+        if self.preproccess_function.__name__ == '_none':
+            self.current_measurement = [measurement, ]
     
     def preproccess(self):
         self.preproccess_function()

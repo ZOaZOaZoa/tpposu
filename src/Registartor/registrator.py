@@ -36,8 +36,8 @@ if __name__ == '__main__':
     TKI_steps_params = [
         ( 1, Action.Measure),
         ( 1, Action.Preprocess),
-        ( 2, Action.Measure),
-        ( 2, Action.Preprocess),
+        ( 4, Action.Measure),
+        ( 4, Action.Preprocess),
         ( 6, Action.Measure),
         ( 9, Action.Measure),
         (76, Action.Measure),
