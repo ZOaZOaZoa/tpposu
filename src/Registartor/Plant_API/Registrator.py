@@ -20,6 +20,7 @@ class Registrator:
     def __init__(self, channels_params: list[ChannelParam], tki_steps: list[TKI_step], plant: Plant):
         self.frames = []
         self.last_frame = []
+        self.registrating = False
     
         # Создаём объекты каналов
         self.channels: dict[int, Channel] = dict()
@@ -132,4 +133,8 @@ class Registrator:
                 rows_with_exp_id
             )
 
-    
+    def start_registration(self):
+        self.registrating = True
+
+    def stop_registration(self):
+        self.registrating = False
