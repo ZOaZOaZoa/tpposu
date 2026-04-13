@@ -7,9 +7,8 @@ from time import perf_counter
 
 
 class RegistratorGUI:
-    def __init__(self, root, registrator):
+    def __init__(self, root):
         self.root = root
-        self.registrator = registrator
         self.running = False
         self.thread = None
 
@@ -38,12 +37,13 @@ class RegistratorGUI:
         self.output_label.pack()
 
         self.output_text = tk.Text(root, height=30, width=80)
-        self.output_text.pack()
+        self.output_text.pack()    
 
     def start(self):
         if self.running:
             return
 
+        self.registrator = init_registrator()
         self.running = True
         self.registrator.start_registration()
 
@@ -92,6 +92,7 @@ class RegistratorGUI:
         self.root.after(0, update)
 
     def save(self):
+        self.stop()
         fio = self.fio_entry.get()
 
         try:
@@ -100,7 +101,7 @@ class RegistratorGUI:
         except Exception as e:
             messagebox.showerror("Ошибка", str(e))
 
-if __name__ == '__main__':
+def init_registrator():
     # Определяем параметры и функции предобработки
     channels_params_list = [
         # (channel_num, 'function')
@@ -155,7 +156,9 @@ if __name__ == '__main__':
 
     plant = Plant()
     registrator = Registrator(channels_params, tki_steps, plant)
+    return registrator
 
+if __name__ == '__main__':
     root = tk.Tk()
-    app = RegistratorGUI(root, registrator)
+    app = RegistratorGUI(root)
     root.mainloop()
