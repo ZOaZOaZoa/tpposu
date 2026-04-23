@@ -1,8 +1,8 @@
-from Plant import Plant
+from Plant_API import Plant
 
 if __name__ == '__main__':
     plant = Plant()
-    channel = 64
+    channel = 3
     values = []
 
     for i in range(100):
