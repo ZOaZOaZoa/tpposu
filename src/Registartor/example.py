@@ -1,3 +1,7 @@
+'''
+Это файл примера работы с API обёрткой над C библиотекой Plant
+'''
+
 from Plant_API import Plant
 
 if __name__ == '__main__':
