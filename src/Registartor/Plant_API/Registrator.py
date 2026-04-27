@@ -79,7 +79,7 @@ class Registrator:
         finally:
             conn.close()
 
-    def save_to_db(self, db_path: str, operator_fio: str = 'Ивнов Иван'):
+    def save_to_db(self, db_path: str, operator_fio: str = 'Ивнов Иван', description: str = 'Описания не задано'):
         columns_names = self.channels_names
         rows = self.frames
 
@@ -92,6 +92,7 @@ class Registrator:
                 CREATE TABLE IF NOT EXISTS Exp_info (
                     EXP_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     OPERATOR_FIO TEXT NOT NULL,
+                    DESCRIPTION TEXT,
                     EXP_DATE TEXT,
                     END_DATE TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -115,9 +116,9 @@ class Registrator:
             cursor.execute('PRAGMA foreign_keys = ON')
             
             cursor.execute('''
-                INSERT INTO Exp_info (OPERATOR_FIO, EXP_DATE)
-                VALUES (?, ?)
-            ''', (operator_fio, self.startdate))
+                INSERT INTO Exp_info (OPERATOR_FIO, DESCRIPTION, EXP_DATE)
+                VALUES (?, ?, ?)
+            ''', (operator_fio, description, self.startdate))
 
             experiment_id = cursor.lastrowid
             print(f"ID эксперимента: {experiment_id}")

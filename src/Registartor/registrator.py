@@ -37,6 +37,14 @@ class RegistratorGUI:
         self.fio_entry.pack()
         self.fio_entry.insert(0, "Иванов Иван")
 
+        # --- Описание эксперимента ---
+        self.description_label = ttk.Label(root, text="Описание эксперимента:")
+        self.description_label.pack()
+
+        self.description_entry = ttk.Entry(root, width=40)
+        self.description_entry.pack()
+        self.description_entry.insert(0, "Описания не задано")
+
         self.save_button = ttk.Button(root, text="Сохранить в БД", command=self.save)
         self.save_button.pack(pady=5)
 
@@ -113,7 +121,10 @@ class RegistratorGUI:
         for i in range(len(frame)):
             name = names[i]
             val = frame[i]
-            texts.append(f'{name:>25}:{val:>30}')
+            if isinstance(val, float):
+                texts.append(f'{name:>25}:{val:>30.2f}')
+            else:
+                texts.append(f'{name:>25}:{val:>30}')
         text = "\n".join(texts)
 
         def update():
@@ -125,9 +136,10 @@ class RegistratorGUI:
     def save(self):
         self.stop()
         fio = self.fio_entry.get()
+        description = self.description_entry.get()
 
         try:
-            self.registrator.save_to_db("measurements.db", fio)
+            self.registrator.save_to_db("measurements.db", fio, description)
             messagebox.showinfo("Успех", "Данные сохранены в БД")
         except Exception as e:
             messagebox.showerror("Ошибка", str(e))
