@@ -15,7 +15,7 @@ import re
 class DataManagementProgram:
     """Основной класс программы управления данными"""
     
-    def __init__(self, db_path: str = "measurements.db"):
+    def __init__(self, db_path: str = "measurements.db", parent = None, tab_name: str = ''):
         """
         Инициализация программы
         
@@ -23,6 +23,9 @@ class DataManagementProgram:
             db_path: путь к файлу базы данных SQLite
         """
         self.db_path = db_path
+        self.parent = parent
+        self.tab_name = tab_name
+
         self.current_exp_id = None
         self.current_operator = None
         self.current_exp_date = None
@@ -33,24 +36,37 @@ class DataManagementProgram:
         self.last_sort_column = None  # Последний столбец для сортировки
         self.last_sort_reverse = False  # Направление сортировки
         
-        self.root = tk.Tk()
-        self.root.title("Управление данными - Программа П2")
-        self.root.geometry("1400x800")
-        
-        # Настройка минимальных размеров окна
-        self.root.minsize(1000, 600)
+
+        self.main_frame = ttk.Frame(parent)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.root = self._get_root_window()
         
         self._setup_ui()
         self._load_experiments_list()
         
+        # Для предотвращения рекурсивных вызовов
+        self._resizing = False
+        self._resize_after_id = None
+
         # Привязываем событие изменения размера окна
-        self.root.bind('<Configure>', self._on_window_resize)
-        
+        # self.root.bind('<Configure>', self._on_window_resize)
+        # self.table_container.bind('<Configure>', self._on_table_containter_resize)
+
+
+    def _get_root_window(self):
+        """Получить корневое окно (Tk) через родительскую иерархию"""
+        widget = self.main_frame
+        while widget:
+            if isinstance(widget, tk.Tk):
+                return widget
+            widget = widget.master
+        return None
+
     def _setup_ui(self):
         """Настройка пользовательского интерфейса"""
         
         # Основной контейнер с возможностью изменения размера
-        self.main_paned = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
+        self.main_paned = ttk.PanedWindow(self.main_frame, orient=tk.VERTICAL)
         self.main_paned.pack(fill=tk.BOTH, expand=True)
         
         # Верхняя панель (фиксированная часть)
@@ -200,14 +216,7 @@ class DataManagementProgram:
         
         self.export_btn = ttk.Button(bottom_inner_frame, text="Экспортировать в CSV", command=self._export_to_csv, width=22)
         self.export_btn.pack(side=tk.LEFT, padx=10)
-        
-    def _on_window_resize(self, event=None):
-        """Обработчик изменения размера окна - перерастягиваем колонки таблицы"""
-        # Проверяем, что событие относится к главному окну и таблица существует
-        if event.widget == self.root and hasattr(self, 'tree') and self.current_columns:
-            self.root.update_idletasks()
-            self._resize_tree_columns()
-    
+
     def _resize_tree_columns(self):
         """Растянуть колонки таблицы на всю доступную ширину"""
         if not self.current_columns:
@@ -691,10 +700,7 @@ class DataManagementProgram:
             
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить файл: {e}")
-    
-    def run(self):
-        """Запустить программу"""
-        self.root.mainloop()
+
 
 
 def main():
