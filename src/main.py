@@ -4,8 +4,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Protocol, Any
 
-from DataManagement import DataManagement
 from Registartor import Registrator
+from DataManagement import DataManagement
+from DataProcessor import DataProcessor
 
 class ModuleClass(Protocol):
     def __init__(self, parent=None, tab_name: str = '', **kwargs):
@@ -79,11 +80,16 @@ def main():
             kwargs={}
         ),
         Module(
-            tab_name='Работа с данными',
+            tab_name='Управление данными',
             module_class=DataManagement,
             kwargs={
                 'db_path': db_path,
             }
+        ),
+        Module(
+            tab_name='Обработка данных',
+            module_class=DataProcessor,
+            kwargs={}
         ),
     ]
     
