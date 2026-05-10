@@ -121,7 +121,7 @@ class Registrator:
                     OPERATOR_FIO TEXT NOT NULL,
                     DESCRIPTION TEXT,
                     EXP_DATE TEXT,
-                    END_DATE TEXT DEFAULT CURRENT_TIMESTAMP
+                    CREATE_DATE TEXT
                 )
             ''')
 
@@ -143,9 +143,9 @@ class Registrator:
             cursor.execute('PRAGMA foreign_keys = ON')
             
             cursor.execute('''
-                INSERT INTO Exp_info (OPERATOR_FIO, DESCRIPTION, EXP_DATE)
-                VALUES (?, ?, ?)
-            ''', (operator_fio, description, self.startdate))
+                INSERT INTO Exp_info (OPERATOR_FIO, DESCRIPTION, EXP_DATE, CREATE_DATE)
+                VALUES (?, ?, ?, ?)
+            ''', (operator_fio, description, self.startdate, datetime.now().isoformat()))
 
             experiment_id = cursor.lastrowid
             print(f"ID эксперимента: {experiment_id}")

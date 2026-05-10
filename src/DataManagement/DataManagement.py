@@ -304,7 +304,7 @@ class DataManagement:
             with self._get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT EXP_ID, OPERATOR_FIO, EXP_DATE, END_DATE 
+                    SELECT EXP_ID, OPERATOR_FIO, EXP_DATE, CREATE_DATE 
                     FROM Exp_info 
                     ORDER BY EXP_DATE DESC
                 """)
@@ -317,12 +317,12 @@ class DataManagement:
                 
                 # Группируем по операторам
                 operators = {}
-                for exp_id, operator_fio, exp_date, end_date in experiments:
+                for exp_id, operator_fio, exp_date, create_date in experiments:
                     if operator_fio not in operators:
                         operators[operator_fio] = []
                     # Форматируем дату для отображения
                     exp_date_str = self._format_datetime(exp_date) if exp_date else "дата не указана"
-                    end_date_str = self._format_datetime(end_date) if end_date else "активен"
+                    end_date_str = self._format_datetime(create_date) if create_date else "активен"
                     exp_str = f"ID:{exp_id} | {exp_date_str} | {end_date_str}"
                     operators[operator_fio].append((exp_id, exp_str))
                 
@@ -379,14 +379,14 @@ class DataManagement:
                 
                 # Получаем информацию об эксперименте
                 cursor.execute("""
-                    SELECT OPERATOR_FIO, EXP_DATE, END_DATE 
+                    SELECT OPERATOR_FIO, EXP_DATE, CREATE_DATE 
                     FROM Exp_info 
                     WHERE EXP_ID = ?
                 """, (exp_id,))
                 exp_info = cursor.fetchone()
                 
                 if exp_info:
-                    self.current_operator, exp_date, end_date = exp_info
+                    self.current_operator, exp_date, create_date = exp_info
                     self.current_exp_date = self._format_datetime(exp_date)
                     self.title = f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}"
                 
