@@ -10,6 +10,7 @@ from Registartor import Registrator
 class ModuleClass(Protocol):
     def __init__(self, parent=None, tab_name: str = '', **kwargs):
         ...
+    
 
 @dataclass
 class Module:
@@ -28,7 +29,6 @@ class Module:
 class MainApplication:
     def __init__(self, root, modules: list[Module]):
         self.root = root
-        self.root.title("Главное окно с вкладками")
         self.root.geometry("1400x800")
         
         # Создаем Notebook (контейнер для вкладок)
@@ -49,6 +49,19 @@ class MainApplication:
 
             # Создаем экземпляр DataManagement для этой вкладки
             self.tabs[tab_name] = module_instance
+        
+        self.notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
+    
+    def _on_tab_changed(self, event):
+        '''
+            Обновление названия окна в соответствии с title модуля во вкладке
+        '''
+        current_tab = self.notebook.select()
+
+        if current_tab:
+            tab_name = self.notebook.tab(current_tab, "text")
+            current_module = self.tabs[tab_name]
+            self.root.title(current_module.title)
     
     def run(self):
         """Запуск приложения"""

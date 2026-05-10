@@ -40,6 +40,7 @@ class DataManagement:
         self.main_frame = ttk.Frame(parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         self.root = self._get_root_window()
+        self.title = 'Работа с данными'
         
         self._setup_ui()
         self._load_experiments_list()
@@ -387,7 +388,7 @@ class DataManagement:
                 if exp_info:
                     self.current_operator, exp_date, end_date = exp_info
                     self.current_exp_date = self._format_datetime(exp_date)
-                    self.root.title(f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}")
+                    self.title = f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}"
                 
                 # Получаем все столбцы таблицы Measurements
                 cursor.execute("PRAGMA table_info(Measurements)")
@@ -696,27 +697,3 @@ class DataManagement:
             
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить файл: {e}")
-
-
-
-def main():
-    """Точка входа"""
-    # Путь к файлу БД
-    db_path = Path(__file__).parent.parent / "measurements.db"
-    
-    # Проверяем существование БД
-    if not Path(db_path).exists():
-        print(f"Внимание: База данных '{db_path}' не найдена. Убедитесь, что П1 создала БД.")
-        response = messagebox.askyesno("Предупреждение", 
-                                       f"База данных '{db_path}' не найдена.\n"
-                                       "Вы хотите продолжить (будет создана новая БД)?")
-        if not response:
-            return
-    
-    # Создаем и запускаем программу
-    app = DataManagement(db_path)
-    app.run()
-
-
-if __name__ == "__main__":
-    main()

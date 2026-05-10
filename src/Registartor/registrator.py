@@ -11,7 +11,7 @@ class RegistratorGUI:
         self.running = False
         self.thread = None
 
-        # self.parent.title("Регистрация измерений")
+        self.title = "Регистрация измерений"
 
         # --- Количество кадров ---
         self.frame_count_label = ttk.Label(parent, text="Сколько снять кадров?")
@@ -197,8 +197,3 @@ class RegistratorGUI:
         plant = Plant()
         registrator = Registrator(channels_params, tki_steps, plant)
         return registrator
-
-if __name__ == '__main__':
-    root = tk.Tk()
-    app = RegistratorGUI(root)
-    root.mainloop()
