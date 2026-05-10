@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 
-class DataManagementProgram:
+class DataManagement:
     """Основной класс программы управления данными"""
     
     def __init__(self, db_path: str = "measurements.db", parent = None, tab_name: str = ''):
@@ -47,10 +47,6 @@ class DataManagementProgram:
         # Для предотвращения рекурсивных вызовов
         self._resizing = False
         self._resize_after_id = None
-
-        # Привязываем событие изменения размера окна
-        # self.root.bind('<Configure>', self._on_window_resize)
-        # self.table_container.bind('<Configure>', self._on_table_containter_resize)
 
 
     def _get_root_window(self):
@@ -718,7 +714,7 @@ def main():
             return
     
     # Создаем и запускаем программу
-    app = DataManagementProgram(db_path)
+    app = DataManagement(db_path)
     app.run()
 
 

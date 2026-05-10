@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 
-from DataManagement.data_management_program import DataManagementProgram as DataManagement
+from DataManagement import DataManagement
 
 class MainApplication:
     def __init__(self, root, db_paths):
