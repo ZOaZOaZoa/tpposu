@@ -40,6 +40,7 @@ class DataManagement:
         self.main_frame = ttk.Frame(parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         self.root = self._get_root_window()
+        self.title = 'Работа с данными'
         
         self._setup_ui()
         self._load_experiments_list()
@@ -387,7 +388,7 @@ class DataManagement:
                 if exp_info:
                     self.current_operator, exp_date, end_date = exp_info
                     self.current_exp_date = self._format_datetime(exp_date)
-                    self.root.title(f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}")
+                    self.title = f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}"
                 
                 # Получаем все столбцы таблицы Measurements
                 cursor.execute("PRAGMA table_info(Measurements)")

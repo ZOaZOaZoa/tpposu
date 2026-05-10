@@ -11,7 +11,7 @@ class RegistratorGUI:
         self.running = False
         self.thread = None
 
-        # self.parent.title("Регистрация измерений")
+        self.title = "Регистрация измерений"
 
         # --- Количество кадров ---
         self.frame_count_label = ttk.Label(parent, text="Сколько снять кадров?")
