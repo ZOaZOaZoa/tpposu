@@ -117,8 +117,8 @@ class DataManagement:
         self.avg_labels = {}
         self.avg_values = {}
         
-        # Создаем 12 колонок для каналов
-        for i in range(12):
+        # Создаем 10 колонок для каналов
+        for i in range(10):
             # Создаем фрейм для каждого канала
             channel_frame = ttk.Frame(avg_inner_frame)
             channel_frame.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
