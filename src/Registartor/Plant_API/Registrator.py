@@ -1,4 +1,4 @@
-from .Channel import Channel, ChannelParam, MeasureError
+from .Channel import Channel, ChannelParam, MeasureError, Preprocessing
 from .Plant import Plant
 from dataclasses import dataclass
 from typing import Any
@@ -31,14 +31,18 @@ class Registrator:
 
         # Создаём объекты каналов
         self.channels: dict[int, Channel] = dict()
-        self.channels_names: list[str] = []
+        self.channels_db_names: list[str] = []
+        self.channels_display_names: list[str] = []
         for param in channels_params:
             channel = Channel(param.number, plant, param.preprocessing, param.additional_params)
             channel.connect_control_fail_callbacks(process_measure_error)
             self.channels[param.number] = channel
-            # Добавляем названия столбцов для значений, которые улетят в БД
-            for column_in_db in param.columns_in_db:
-                self.channels_names.append(column_in_db)
+
+            if param.preprocessing != Preprocessing.StableControl:
+                # Добавляем названия столбцов для значений, которые улетят в БД
+                self.channels_db_names += param.columns_in_db
+                # Добавляем названия столбцов для отображения в программе
+                self.channels_display_names += channel.display_names
 
         self.tki_steps = tki_steps
         self.startdate = None
@@ -78,6 +82,10 @@ class Registrator:
         frame = [frame_number, current_datetime]
 
         for channel in self.channels.values():
+            if channel.preproccess_type == Preprocessing.StableControl:
+                # Значения контроля стабильности не летят в БД и не сохраняются
+                continue
+
             channel_measurement = channel.current_measurement
             if len(channel_measurement) != channel.output_size:
                 frame += [None, ] * channel.output_size
@@ -99,7 +107,7 @@ class Registrator:
             conn.close()
 
     def save_to_db(self, db_path: str, operator_fio: str = 'Ивнов Иван', description: str = 'Описания не задано'):
-        columns_names = self.channels_names
+        columns_names = self.channels_db_names
         rows = self.frames
 
         with self.get_db_connection(db_path) as conn:

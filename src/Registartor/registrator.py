@@ -154,7 +154,7 @@ class RegistratorGUI:
 
     def setup_table_columns(self):
         """Настройка колонок таблицы на основе каналов регистратора"""
-        channels_names = self.registrator.channels_names
+        channels_names = self.registrator.channels_display_names
         columns = ['Кадр', 'Время замера'] + channels_names
         
         self.tree['columns'] = columns
@@ -272,11 +272,11 @@ class RegistratorGUI:
             (4, Preprocessing.PosControl,       ('CH4_RAW',),               (0.0, 1.0)),
             (5, Preprocessing.Norm,             ('CH5_NORM',),              (2.2, 1.5)),
             (6, Preprocessing.Mean,             ('CH6_MEAN', 'CH6_DISP'),   ()),
-            (9, Preprocessing.StableControl,    ('CH9_VAL',),               ()),
+            (9, Preprocessing.StableControl,    (),                         ()),
             (16, Preprocessing.No,              ('CH16_RAW',),              ()),
             (46, Preprocessing.No,              ('CH46_RAW',),              ()),
             (66, Preprocessing.Formula,         ('CH66_FUNC',),             (86.0, 210.0)),
-            (76, Preprocessing.StableControl,   ('CH76_VAL',),              ()),
+            (76, Preprocessing.StableControl,   (),                         ()),
         ]
 
         TKI_steps_params = [

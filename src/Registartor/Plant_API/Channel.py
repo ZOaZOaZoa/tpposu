@@ -43,7 +43,23 @@ class Channel:
             Preprocessing.Formula: self._formula,
             Preprocessing.No: self._none,
         }
+        self.preproccess_type: Preprocessing = preproccess_function
         self.preproccess_function = functions[preproccess_function]
+
+        self.display_names = [f'Кан-{channel_num}', ]
+        match preproccess_function:
+            case Preprocessing.Norm:
+                self.display_names[0] += '-СТД'
+            case Preprocessing.PosControl:
+                self.display_names[0] += ''
+            case Preprocessing.Mean:
+                name = self.display_names[0]
+                self.display_names[0] += '-СР'
+                self.display_names.append(name+'-ДИСП')
+            case Preprocessing.Formula:
+                self.display_names[0] += '-ФУНК'
+            case Preprocessing.No:
+                self.display_names[0] += ''
 
     def measure(self):
         measurement = self.plant.measure(self.channel)
