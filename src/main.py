@@ -1,11 +1,32 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from pathlib import Path
+from dataclasses import dataclass
+from typing import Protocol, Any
 
 from DataManagement import DataManagement
+from Registartor import Registrator
+
+class ModuleClass(Protocol):
+    def __init__(self, parent=None, tab_name: str = '', **kwargs):
+        ...
+
+@dataclass
+class Module:
+    tab_name: str
+    kwargs: dict[str, Any]
+    module_class: ModuleClass
+
+    def create_instance(self, parent):
+        return self.module_class(
+            parent = parent,
+            tab_name = self.tab_name,
+            **self.kwargs,
+        )
+
 
 class MainApplication:
-    def __init__(self, root, db_paths):
+    def __init__(self, root, modules: list[Module]):
         self.root = root
         self.root.title("Главное окно с вкладками")
         self.root.geometry("1400x800")
@@ -15,16 +36,19 @@ class MainApplication:
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Словарь для хранения экземпляров DataManagement
-        self.data_managers = {}
+        self.tabs = {}
         
         # Создаем вкладки с разными экземплярами DataManagement
-        for tab_name, db_path in db_paths.items():
+        for module in modules:
             # Создаем фрейм для вкладки
             tab_frame = ttk.Frame(self.notebook)
+            tab_name = module.tab_name
             self.notebook.add(tab_frame, text=tab_name)
             
+            module_instance = module.create_instance(parent=tab_frame)
+
             # Создаем экземпляр DataManagement для этой вкладки
-            self.data_managers[tab_name] = DataManagement(db_path, tab_frame, tab_name)
+            self.tabs[tab_name] = module_instance
     
     def run(self):
         """Запуск приложения"""
@@ -34,25 +58,24 @@ def main():
     """Точка входа"""
     root = tk.Tk()
     
-    # Пути к разным БД для разных вкладок
-    db_paths = {
-        "Измерения 1": Path(__file__).parent / "measurements.db",
-        "Измерения 2": Path(__file__).parent / "measurements.db",
-        "Архив": Path(__file__).parent / "measurements.db"
-    }
-    
-    # Проверяем существование БД
-    for name, db_path in db_paths.items():
-        if not db_path.exists():
-            print(f"Внимание: База данных '{db_path}' не найдена.")
-            response = messagebox.askyesno("Предупреждение", 
-                                          f"База данных '{db_path}' для вкладки '{name}' не найдена.\n"
-                                          "Вы хотите продолжить (будет создана новая БД)?")
-            if not response:
-                return
+    db_path = Path(__file__).parent / "measurements.db"
+    modules = [
+        Module(
+            tab_name='Регистратор',
+            module_class=Registrator,
+            kwargs={}
+        ),
+        Module(
+            tab_name='Работа с данными',
+            module_class=DataManagement,
+            kwargs={
+                'db_path': db_path,
+            }
+        ),
+    ]
     
     # Создаем и запускаем программу
-    app = MainApplication(root, db_paths)
+    app = MainApplication(root, modules)
     app.run()
 
 if __name__ == "__main__":
