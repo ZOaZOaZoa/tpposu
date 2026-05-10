@@ -197,8 +197,3 @@ class RegistratorGUI:
         plant = Plant()
         registrator = Registrator(channels_params, tki_steps, plant)
         return registrator
-
-if __name__ == '__main__':
-    root = tk.Tk()
-    app = RegistratorGUI(root)
-    root.mainloop()
