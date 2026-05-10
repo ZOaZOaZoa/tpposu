@@ -1,6 +1,6 @@
 from .Plant import Plant
 from enum import Enum, auto
-from typing import Callable
+from typing import Callable, Any
 from dataclasses import dataclass
 import statistics
 
@@ -12,6 +12,11 @@ class Preprocessing(Enum):
     Mean = auto()
     Formula = auto()
     No = auto()
+
+class MeasureError(Enum):
+    StabilityControl = auto()
+    PosControl = auto()
+    NoError = auto()
 
 @dataclass
 class ChannelParam:
@@ -38,7 +43,23 @@ class Channel:
             Preprocessing.Formula: self._formula,
             Preprocessing.No: self._none,
         }
+        self.preproccess_type: Preprocessing = preproccess_function
         self.preproccess_function = functions[preproccess_function]
+
+        self.display_names = [f'Кан-{channel_num}', ]
+        match preproccess_function:
+            case Preprocessing.Norm:
+                self.display_names[0] += '-СТД'
+            case Preprocessing.PosControl:
+                self.display_names[0] += ''
+            case Preprocessing.Mean:
+                name = self.display_names[0]
+                self.display_names[0] += '-СР'
+                self.display_names.append(name+'-ДИСП')
+            case Preprocessing.Formula:
+                self.display_names[0] += '-ФУНК'
+            case Preprocessing.No:
+                self.display_names[0] += ''
 
     def measure(self):
         measurement = self.plant.measure(self.channel)
@@ -52,12 +73,12 @@ class Channel:
         if not self.preproccess_function.__name__ == '_stable_control':
             self.raw_measurements = []
 
-    def connect_control_fail_callbacks(self, func: Callable[[], None]):
+    def connect_control_fail_callbacks(self, func: Callable[[MeasureError, Any], None]):
         self.control_fail_callbacks.append(func)
     
-    def _callback(self):
+    def _callback(self, measure_error: MeasureError, info: Any):
         for callback in self.control_fail_callbacks:
-            callback()
+            callback(measure_error, info)
 
     def _norm(self):
         b1 = self.additional_params[0]
@@ -71,7 +92,7 @@ class Channel:
         b2 = self.additional_params[1]
         measurement = self.raw_measurements[0]
         if not (b1 <= measurement and measurement <= b2):
-            self._callback()
+            self._callback(MeasureError.PosControl, (self.channel, measurement))
         
         self.current_measurement = [ measurement, ]
     
@@ -80,7 +101,7 @@ class Channel:
 
         difference = self.raw_measurements[-1] - self.raw_measurements[-2]
         if abs(difference) >= MAX_DIFFERENCE:
-            self._callback()
+            self._callback(MeasureError.StabilityControl, self.channel)
 
         self.current_measurement = [ self.raw_measurements[-1], ]
         self.raw_measurements = [ self.raw_measurements[-1], ]
