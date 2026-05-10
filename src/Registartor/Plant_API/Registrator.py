@@ -1,6 +1,7 @@
-from .Channel import Channel, ChannelParam
+from .Channel import Channel, ChannelParam, MeasureError
 from .Plant import Plant
 from dataclasses import dataclass
+from typing import Any
 from enum import Enum, auto
 from contextlib import contextmanager
 import sqlite3
@@ -22,11 +23,19 @@ class Registrator:
         self.last_frame = []
         self.registrating = False
     
+        self.measure_status = MeasureError.NoError
+        self.fail_info = None
+        def process_measure_error(error: MeasureError, info: Any):
+            self.measure_status = error
+            self.fail_info = info
+
         # Создаём объекты каналов
         self.channels: dict[int, Channel] = dict()
         self.channels_names: list[str] = []
         for param in channels_params:
-            self.channels[param.number] = Channel(param.number, plant, param.preprocessing, param.additional_params)
+            channel = Channel(param.number, plant, param.preprocessing, param.additional_params)
+            channel.connect_control_fail_callbacks(process_measure_error)
+            self.channels[param.number] = channel
             # Добавляем названия столбцов для значений, которые улетят в БД
             for column_in_db in param.columns_in_db:
                 self.channels_names.append(column_in_db)
@@ -35,24 +44,34 @@ class Registrator:
         self.startdate = None
 
     def measure_frame(self):
+        self.measure_status = MeasureError.NoError
+        self.fail_info = None
+
         if self.startdate is None:
             self.startdate = datetime.now().isoformat()
 
         for tki_step in self.tki_steps:
             channel_num = tki_step.channel
             
+            # Выполнение операции
             if tki_step.action == Action.Measure:
                 self.channels[channel_num].measure()
                 time.sleep(0.001)
-                continue
 
             if tki_step.action == Action.Preprocess:
                 self.channels[channel_num].preproccess()
                 time.sleep(0.001)
-                continue
         
-        self.save_frame()
-        
+            # Ошибка стабильности
+            if self.measure_status == MeasureError.StabilityControl:
+                break
+            
+        if self.measure_status == MeasureError.StabilityControl:
+            self.measure_frame()
+        else:
+            self.save_frame()
+    
+
     def save_frame(self):
         frame_number = len(self.frames) + 1
         current_datetime = datetime.now().isoformat()
