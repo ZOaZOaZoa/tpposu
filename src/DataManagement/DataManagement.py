@@ -40,9 +40,16 @@ class DataManagement:
         self.current_columns = []
         self.display_columns = []
         self.original_data = []
+        self.original_error_flags = []  # Флаги ошибок для каждой строки
         self.last_sort_column = None
         self.last_sort_reverse = False
         self.filter_channel_map = {}
+
+        # Диапазоны допустимых значений для каналов (из ТЗ)
+        self.valid_ranges = {
+            'CH1_RAW': (-25, 20),      # температура, канал 1
+            'CH4_RAW': (0, 1),         # дискретный, канал 4
+        }
 
         self.main_frame = ttk.Frame(parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -161,6 +168,7 @@ class DataManagement:
         self.tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 0))
         
         self.tree = ttk.Treeview(self.tree_frame, show='headings')
+        self.tree.tag_configure('error', background='#ffcccc')  # Красный фон для ошибочных кадров
         self.vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         self.hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=self.vsb.set, xscrollcommand=self.hsb.set)
@@ -192,6 +200,20 @@ class DataManagement:
         
         self.export_btn = ttk.Button(bottom_inner_frame, text="Экспортировать в CSV", command=self._export_to_csv, width=22)
         self.export_btn.pack(side=tk.LEFT, padx=10)
+
+    def _check_row_has_error(self, row_dict):
+        """Проверка, есть ли в строке значения, вышедшие за допустимые диапазоны"""
+        for col_name, (min_val, max_val) in self.valid_ranges.items():
+            if col_name in row_dict:
+                value = row_dict[col_name]
+                if value is not None:
+                    try:
+                        float_val = float(value)
+                        if float_val < min_val or float_val > max_val:
+                            return True
+                    except (ValueError, TypeError):
+                        pass
+        return False
 
     def _on_tree_column_resize(self, event):
         if hasattr(self, 'current_columns') and self.current_columns:
@@ -366,7 +388,7 @@ class DataManagement:
                     
                     exp_date_str = self._format_datetime(exp_date) if exp_date else "дата не указана"
                     
-                    # Обрезаем описание, если оно слишком длинное (максимум 50 символов)
+                    # Обрезаем описание, если оно слишком длинное
                     desc_short = description[:50] + "..." if len(description) > 50 else description
                     
                     # Формат: ID | Дата | Описание
@@ -463,13 +485,16 @@ class DataManagement:
                     self.current_data = []
                     self.current_columns = data_columns
                     self.original_data = []
+                    self.original_error_flags = []
                     self._update_table()
                     return
                 
-                # Преобразуем данные (FRAME_NUM как целое число)
+                # Преобразуем данные и проверяем ошибки
                 converted_rows = []
+                error_flags = []
                 for row in rows:
                     converted_row = []
+                    row_dict = {}
                     for i, value in enumerate(row):
                         col_name = data_columns[i]
                         if col_name == 'FRAME_TIME':
@@ -480,12 +505,19 @@ class DataManagement:
                             except (ValueError, TypeError):
                                 converted_row.append(None)
                         else:
-                            converted_row.append(self._try_convert_to_float(value))
+                            float_val = self._try_convert_to_float(value)
+                            converted_row.append(float_val)
+                            row_dict[col_name] = float_val
                     converted_rows.append(converted_row)
+                    
+                    # Проверяем наличие ошибок в строке
+                    has_error = self._check_row_has_error(row_dict)
+                    error_flags.append(has_error)
                 
                 self.current_columns = data_columns
                 self.current_data = converted_rows
                 self.original_data = [row[:] for row in converted_rows]
+                self.original_error_flags = error_flags[:]
                 
                 # Создаем словарь соответствия русских названий английским для фильтрации
                 self.filter_channel_map = {}
@@ -529,17 +561,23 @@ class DataManagement:
             else:
                 self.tree.column(col, width=120, minwidth=100)
         
-        for row in self.current_data:
+        # Вставляем данные с подсветкой ошибочных строк
+        for i, row in enumerate(self.current_data):
             str_row = []
-            for i, val in enumerate(row):
-                col_name = self.current_columns[i]
+            for j, val in enumerate(row):
+                col_name = self.current_columns[j]
                 if col_name == 'FRAME_NUM':
                     str_row.append(str(val) if val is not None else "—")
                 elif col_name == 'FRAME_TIME':
                     str_row.append(val if val else "—")
                 else:
                     str_row.append(self._format_number(val))
-            self.tree.insert('', tk.END, values=str_row)
+            
+            # Проверяем, есть ли ошибка в этой строке
+            if i < len(self.original_error_flags) and self.original_error_flags[i]:
+                self.tree.insert('', tk.END, values=str_row, tags=('error',))
+            else:
+                self.tree.insert('', tk.END, values=str_row)
         
         self._sync_avg_table()
         self.root.update_idletasks()
@@ -548,13 +586,17 @@ class DataManagement:
     def _sort_by_column(self, col):
         col_index = self.current_columns.index(col)
         
+        # Сохраняем соответствие данных и флагов ошибок
+        paired = list(zip(self.current_data, self.original_error_flags))
+        
         if self.last_sort_column == col:
             self.last_sort_reverse = not self.last_sort_reverse
         else:
             self.last_sort_column = col
             self.last_sort_reverse = False
         
-        def get_sort_key(row):
+        def get_sort_key(item):
+            row = item[0]
             if col_index >= len(row):
                 return float('inf') if self.last_sort_reverse else float('-inf')
             val = row[col_index]
@@ -568,7 +610,12 @@ class DataManagement:
             except (ValueError, TypeError):
                 return str(val)
         
-        self.current_data.sort(key=get_sort_key, reverse=self.last_sort_reverse)
+        paired.sort(key=get_sort_key, reverse=self.last_sort_reverse)
+        
+        # Разделяем обратно
+        self.current_data = [item[0] for item in paired]
+        self.original_error_flags = [item[1] for item in paired]
+        
         self._update_table()
     
     def _on_tree_click(self, event):
@@ -594,7 +641,9 @@ class DataManagement:
             messagebox.showwarning("Предупреждение", "Укажите хотя бы одну границу диапазона")
             return
         
+        # Начинаем с оригинальных данных
         filtered_data = [row[:] for row in self.original_data]
+        filtered_error_flags = self.original_error_flags[:]
         
         # Определяем индекс колонки по русскому названию
         if channel == 'Кадр':
@@ -625,7 +674,8 @@ class DataManagement:
             return
         
         temp_data = []
-        for row in filtered_data:
+        temp_error_flags = []
+        for i, row in enumerate(filtered_data):
             if col_index >= len(row):
                 continue
             value = row[col_index]
@@ -652,9 +702,11 @@ class DataManagement:
             
             if min_ok and max_ok:
                 temp_data.append(row)
+                temp_error_flags.append(filtered_error_flags[i])
         
         if temp_data:
             self.current_data = temp_data
+            self.original_error_flags = temp_error_flags
             self._update_table()
             messagebox.showinfo("Информация", f"Найдено {len(temp_data)} записей из {len(self.original_data)}")
         else:
@@ -666,6 +718,7 @@ class DataManagement:
         
         if self.original_data:
             self.current_data = [row[:] for row in self.original_data]
+            self.original_error_flags = self.original_error_flags[:] if hasattr(self, 'original_error_flags') else []
             self.last_sort_column = None
             self.last_sort_reverse = False
             self._update_table()
