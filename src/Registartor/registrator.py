@@ -236,10 +236,8 @@ class RegistratorGUI:
             tags = list()
             if self.registrator.measure_status == MeasureError.PosControl:
                 tags.append('error')
-            self.tree.insert('', 'end', values=row_data, tags=tags)
-            
             # Вставляем в начало таблицы (сверху новые кадры)
-            self.tree.insert('', 'end', values=row_data)
+            self.tree.insert('', 'end', values=row_data, tags=tags)
             
             # Автопрокрутка к новому элементу
             self.tree.yview_moveto(1)
