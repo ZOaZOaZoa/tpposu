@@ -15,13 +15,19 @@ import re
 class DataManagement:
     """Основной класс программы управления данными"""
     
-    def __init__(self, db_path: str = "measurements.db", parent = None, tab_name: str = ''):
+    def __init__(self, db_path: str = None, parent = None, tab_name: str = ''):
         """
         Инициализация программы
         
         Args:
             db_path: путь к файлу базы данных SQLite
         """
+        # Если путь не указан, используем путь к БД в корневой папке tpposu-develop
+        if db_path is None:
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent
+            db_path = str(project_root / 'measurements.db')
+        
         self.db_path = db_path
         self.parent = parent
         self.tab_name = tab_name
@@ -29,13 +35,21 @@ class DataManagement:
         self.current_exp_id = None
         self.current_operator = None
         self.current_exp_date = None
-        self.current_data = []  # Хранит текущие отображаемые данные
-        self.current_columns = []  # Хранит имена столбцов
-        self.original_data = []  # Хранит оригинальные данные (для сброса фильтра)
-        self.original_columns = []  # Хранит оригинальные столбцы
-        self.last_sort_column = None  # Последний столбец для сортировки
-        self.last_sort_reverse = False  # Направление сортировки
-        
+        self.current_description = None
+        self.current_data = []
+        self.current_columns = []
+        self.display_columns = []
+        self.original_data = []
+        self.original_error_flags = []  # Флаги ошибок для каждой строки
+        self.last_sort_column = None
+        self.last_sort_reverse = False
+        self.filter_channel_map = {}
+
+        # Диапазоны допустимых значений для каналов (из ТЗ)
+        self.valid_ranges = {
+            'CH1_RAW': (-25, 20),      # температура, канал 1
+            'CH4_RAW': (0, 1),         # дискретный, канал 4
+        }
 
         self.main_frame = ttk.Frame(parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -45,13 +59,10 @@ class DataManagement:
         self._setup_ui()
         self._load_experiments_list()
         
-        # Для предотвращения рекурсивных вызовов
         self._resizing = False
         self._resize_after_id = None
 
-
     def _get_root_window(self):
-        """Получить корневое окно (Tk) через родительскую иерархию"""
         widget = self.main_frame
         while widget:
             if isinstance(widget, tk.Tk):
@@ -59,14 +70,32 @@ class DataManagement:
             widget = widget.master
         return None
 
+    def _get_russian_column_name(self, col_name):
+        """Преобразовать английское название столбца в русское (как в регистраторе)"""
+        russian_names = {
+            'FRAME_NUM': 'Кадр',
+            'FRAME_TIME': 'Время замера',
+            'CH1_RAW': 'Кан-1',
+            'CH2_RAW': 'Кан-2',
+            'CH3_RAW': 'Кан-3',
+            'CH4_RAW': 'Кан-4',
+            'CH5_NORM': 'Кан-5-СТД',
+            'CH6_MEAN': 'Кан-6-СР',
+            'CH6_DISP': 'Кан-6-ДИСП',
+            'CH9_VAL': 'Кан-9',
+            'CH16_RAW': 'Кан-16',
+            'CH46_RAW': 'Кан-46',
+            'CH66_FUNC': 'Кан-66-ФУНК',
+            'CH76_VAL': 'Кан-76',
+        }
+        return russian_names.get(col_name, col_name)
+
     def _setup_ui(self):
         """Настройка пользовательского интерфейса"""
         
-        # Основной контейнер с возможностью изменения размера
         self.main_paned = ttk.PanedWindow(self.main_frame, orient=tk.VERTICAL)
         self.main_paned.pack(fill=tk.BOTH, expand=True)
         
-        # Верхняя панель (фиксированная часть)
         self.top_container = ttk.Frame(self.main_paned)
         self.main_paned.add(self.top_container, weight=0)
         
@@ -74,104 +103,55 @@ class DataManagement:
         self.top_frame = ttk.LabelFrame(self.top_container, text="Выбор эксперимента", padding=10)
         self.top_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Центрируем содержимое панели выбора эксперимента
         top_inner_frame = ttk.Frame(self.top_frame)
         top_inner_frame.pack(anchor=tk.CENTER)
         
-        # Выбор оператора
         ttk.Label(top_inner_frame, text="Оператор:").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.operator_var = tk.StringVar()
         self.operator_combo = ttk.Combobox(top_inner_frame, textvariable=self.operator_var, width=30)
         self.operator_combo.grid(row=0, column=1, padx=5)
         self.operator_combo.bind('<<ComboboxSelected>>', self._on_operator_selected)
         
-        # Выбор эксперимента
         ttk.Label(top_inner_frame, text="Эксперимент:").grid(row=0, column=2, sticky=tk.W, padx=5)
         self.exp_var = tk.StringVar()
-        self.exp_combo = ttk.Combobox(top_inner_frame, textvariable=self.exp_var, width=50)
+        self.exp_combo = ttk.Combobox(top_inner_frame, textvariable=self.exp_var, width=60)
         self.exp_combo.grid(row=0, column=3, padx=5)
         self.exp_combo.bind('<<ComboboxSelected>>', self._on_experiment_selected)
         
-        # Кнопка обновления
         self.refresh_btn = ttk.Button(top_inner_frame, text="Обновить список", command=self._load_experiments_list)
         self.refresh_btn.grid(row=0, column=4, padx=10)
         
-        # Панель управления (средние значения и фильтрация)
-        self.control_frame = ttk.Frame(self.top_container)
-        self.control_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Панель фильтрации данных
+        self.filter_frame = ttk.LabelFrame(self.top_container, text="Фильтрация данных", padding=10)
+        self.filter_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Настройка весов для равномерного растягивания
-        self.control_frame.grid_columnconfigure(0, weight=3)  # Средние значения
-        self.control_frame.grid_columnconfigure(1, weight=1)  # Фильтрация
-        self.control_frame.grid_rowconfigure(0, weight=1)
+        filter_row = ttk.Frame(self.filter_frame)
+        filter_row.pack(fill=tk.X, pady=5)
         
-        # Левая часть - средние значения (растягивается)
-        self.avg_frame = ttk.LabelFrame(self.control_frame, text="Средние значения каналов", padding=10)
-        self.avg_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        
-        # Создаем внутренний фрейм для сетки 2x12
-        avg_inner_frame = ttk.Frame(self.avg_frame)
-        avg_inner_frame.pack(expand=True, fill=tk.BOTH)
-        
-        # Создаем 12 колонок для каналов
-        self.avg_labels = {}
-        self.avg_values = {}
-        
-        # Создаем 10 колонок для каналов
-        for i in range(10):
-            # Создаем фрейм для каждого канала
-            channel_frame = ttk.Frame(avg_inner_frame)
-            channel_frame.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
-            
-            # Название канала сверху
-            channel_label = ttk.Label(channel_frame, text=f"Канал {i+1}", font=('Arial', 9, 'bold'), anchor='center')
-            channel_label.pack(fill=tk.X, pady=(0, 2))
-            
-            # Значение канала снизу
-            self.avg_values[f"channel_{i+1}"] = tk.StringVar(value="—")
-            avg_label = ttk.Label(channel_frame, textvariable=self.avg_values[f"channel_{i+1}"], 
-                                  font=('Arial', 9), anchor='center', relief=tk.SUNKEN, padding=2)
-            avg_label.pack(fill=tk.X)
-            self.avg_labels[f"channel_{i+1}"] = avg_label
-            
-            # Настройка весов для равномерного распределения
-            avg_inner_frame.grid_columnconfigure(i, weight=1)
-        
-        # Правая часть - фильтрация (без центрирования, как было ранее)
-        self.filter_frame = ttk.LabelFrame(self.control_frame, text="Фильтрация данных", padding=10)
-        self.filter_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        
-        # Выбор канала для фильтрации
-        ttk.Label(self.filter_frame, text="Канал:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(filter_row, text="Канал:").pack(side=tk.LEFT, padx=5)
         self.filter_channel_var = tk.StringVar()
-        self.filter_channel_combo = ttk.Combobox(self.filter_frame, textvariable=self.filter_channel_var, 
+        self.filter_channel_combo = ttk.Combobox(filter_row, textvariable=self.filter_channel_var, 
                                                   width=25, state="readonly")
-        self.filter_channel_combo.grid(row=0, column=1, padx=5, pady=5)
+        self.filter_channel_combo.pack(side=tk.LEFT, padx=5)
         
-        # Диапазон значений
-        ttk.Label(self.filter_frame, text="Диапазон:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(filter_row, text="Диапазон:").pack(side=tk.LEFT, padx=(10, 2))
         
-        filter_range_frame = ttk.Frame(self.filter_frame)
-        filter_range_frame.grid(row=1, column=1, padx=5, pady=5)
-        
-        # Валидация ввода чисел
         vcmd = (self.root.register(self._validate_number_input), '%P')
         
         self.filter_min_var = tk.StringVar()
-        self.filter_min_entry = ttk.Entry(filter_range_frame, textvariable=self.filter_min_var, 
+        self.filter_min_entry = ttk.Entry(filter_row, textvariable=self.filter_min_var, 
                                            width=12, validate='key', validatecommand=vcmd)
         self.filter_min_entry.pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(filter_range_frame, text="до").pack(side=tk.LEFT, padx=5)
+        ttk.Label(filter_row, text="до").pack(side=tk.LEFT, padx=2)
         
         self.filter_max_var = tk.StringVar()
-        self.filter_max_entry = ttk.Entry(filter_range_frame, textvariable=self.filter_max_var, 
+        self.filter_max_entry = ttk.Entry(filter_row, textvariable=self.filter_max_var, 
                                            width=12, validate='key', validatecommand=vcmd)
         self.filter_max_entry.pack(side=tk.LEFT, padx=2)
         
-        # Кнопки фильтрации
         filter_buttons_frame = ttk.Frame(self.filter_frame)
-        filter_buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        filter_buttons_frame.pack(fill=tk.X, pady=5)
         
         self.filter_btn = ttk.Button(filter_buttons_frame, text="Применить фильтр", command=self._apply_filter, width=18)
         self.filter_btn.pack(side=tk.LEFT, padx=5)
@@ -179,16 +159,16 @@ class DataManagement:
         self.reset_filter_btn = ttk.Button(filter_buttons_frame, text="Сбросить фильтр", command=self._reset_filter, width=18)
         self.reset_filter_btn.pack(side=tk.LEFT, padx=5)
         
-        # Таблица данных (растягивается)
-        self.table_container = ttk.Frame(self.main_paned)
-        self.main_paned.add(self.table_container, weight=1)
+        # Контейнер для таблиц
+        self.tables_container = ttk.Frame(self.main_paned)
+        self.main_paned.add(self.tables_container, weight=1)
         
-        # Создаем Treeview с прокруткой
-        self.tree_frame = ttk.Frame(self.table_container)
-        self.tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Основная таблица данных
+        self.tree_frame = ttk.Frame(self.tables_container)
+        self.tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 0))
         
-        # Настройка прокрутки
         self.tree = ttk.Treeview(self.tree_frame, show='headings')
+        self.tree.tag_configure('error', background='#ffcccc')  # Красный фон для ошибочных кадров
         self.vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         self.hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=self.vsb.set, xscrollcommand=self.hsb.set)
@@ -200,77 +180,145 @@ class DataManagement:
         self.tree_frame.grid_rowconfigure(0, weight=1)
         self.tree_frame.grid_columnconfigure(0, weight=1)
         
-        # Привязываем событие клика по заголовку
         self.tree.bind('<ButtonRelease-1>', self._on_tree_click)
+        self.tree.bind('<Configure>', self._on_tree_column_resize)
         
-        # Нижняя панель с кнопкой экспорта (центрирование)
-        self.bottom_frame = ttk.Frame(self.table_container)
+        # Нижняя таблица для средних значений
+        self.avg_bottom_frame = ttk.Frame(self.tables_container)
+        self.avg_bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        self.avg_tree = ttk.Treeview(self.avg_bottom_frame, show='tree', height=1)
+        self.avg_tree.pack(fill=tk.X)
+        self.avg_tree.tag_configure('avg_row', background='#e0e0e0')
+        
+        # Нижняя панель с кнопкой экспорта
+        self.bottom_frame = ttk.Frame(self.tables_container)
         self.bottom_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Центрируем кнопку
         bottom_inner_frame = ttk.Frame(self.bottom_frame)
         bottom_inner_frame.pack(anchor=tk.CENTER)
         
         self.export_btn = ttk.Button(bottom_inner_frame, text="Экспортировать в CSV", command=self._export_to_csv, width=22)
         self.export_btn.pack(side=tk.LEFT, padx=10)
 
+    def _check_row_has_error(self, row_dict):
+        """Проверка, есть ли в строке значения, вышедшие за допустимые диапазоны"""
+        for col_name, (min_val, max_val) in self.valid_ranges.items():
+            if col_name in row_dict:
+                value = row_dict[col_name]
+                if value is not None:
+                    try:
+                        float_val = float(value)
+                        if float_val < min_val or float_val > max_val:
+                            return True
+                    except (ValueError, TypeError):
+                        pass
+        return False
+
+    def _on_tree_column_resize(self, event):
+        if hasattr(self, 'current_columns') and self.current_columns:
+            self.root.after(100, self._sync_avg_table)
+
+    def _calculate_averages_list(self):
+        if not self.current_data or not self.current_columns:
+            return []
+        
+        averages = []
+        for col_index, col_name in enumerate(self.current_columns):
+            if col_name in ['FRAME_NUM', 'FRAME_TIME']:
+                continue
+            
+            values = []
+            for row in self.current_data:
+                if col_index < len(row):
+                    val = row[col_index]
+                    if val is not None and isinstance(val, (int, float)):
+                        values.append(val)
+            
+            if values:
+                avg = sum(values) / len(values)
+                if abs(avg - round(avg)) < 0.0001:
+                    avg_str = str(int(round(avg)))
+                else:
+                    avg_str = f"{avg:.3f}"
+            else:
+                avg_str = "—"
+            
+            averages.append(avg_str)
+        
+        return averages
+
+    def _sync_avg_table(self):
+        if not self.current_columns:
+            return
+        
+        main_cols_count = len(self.current_columns)
+        avg_cols_count = main_cols_count - 1
+        
+        self.avg_tree['columns'] = list(range(avg_cols_count))
+        
+        col0_width = self.tree.column('FRAME_NUM', 'width') + self.tree.column('FRAME_TIME', 'width')
+        self.avg_tree.column(0, width=col0_width, minwidth=col0_width)
+        
+        for i, col_name in enumerate(self.current_columns[2:], start=1):
+            width = self.tree.column(col_name, 'width')
+            self.avg_tree.column(i, width=width, minwidth=width)
+        
+        for item in self.avg_tree.get_children():
+            self.avg_tree.delete(item)
+        
+        avg_values = self._calculate_averages_list()
+        avg_row = ["Средние значения"] + avg_values
+        self.avg_tree.insert('', tk.END, values=avg_row, tags=('avg_row',))
+        self.avg_tree.column('#0', width=0, stretch=False)
+
     def _resize_tree_columns(self):
-        """Растянуть колонки таблицы на всю доступную ширину"""
         if not self.current_columns:
             return
             
         total_width = self.tree.winfo_width()
         if total_width > 100:
-            # Считаем сумму фиксированных ширин для первых N-1 колонок
             fixed_width = 0
-            for col in self.current_columns[:-1]:  # Все кроме последнего
-                if col == 'Время кадра':
+            for col in self.current_columns[:-1]:
+                if col == 'FRAME_TIME':
                     fixed_width += 180
-                elif col == 'Номер кадра':
+                elif col == 'FRAME_NUM':
                     fixed_width += 100
                 else:
                     fixed_width += 120
             
-            # Последнюю колонку растягиваем на оставшееся место
             last_col = self.current_columns[-1]
-            remaining_width = max(100, total_width - fixed_width - 25)  # 25px на скролл
+            remaining_width = max(100, total_width - fixed_width - 25)
             self.tree.column(last_col, width=remaining_width, minwidth=100)
         
+        self._sync_avg_table()
+        
     def _validate_number_input(self, value):
-        """Валидация ввода чисел (разрешены цифры, минус и точка)"""
         if value == "" or value == "-":
             return True
-        # Разрешаем цифры, минус в начале и точку
         pattern = r'^-?\d*\.?\d*$'
         return bool(re.match(pattern, value))
     
     def _format_datetime(self, datetime_str):
-        """Форматирование даты и времени для отображения"""
         if not datetime_str:
             return "—"
         try:
-            # Пробуем разные форматы
             if 'T' in datetime_str:
-                # ISO формат с T
                 dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
                 return dt.strftime("%d.%m.%Y %H:%M:%S")
             else:
-                # Другие форматы
                 return datetime_str.replace('T', ' ').replace('Z', '')
         except:
             return datetime_str
     
     def _format_number(self, value):
-        """Форматирование числа (до 3 значащих цифр)"""
         if value is None or value == '—':
             return "—"
         try:
             num = float(value)
-            # Проверяем, является ли число целым
             if abs(num - round(num)) < 0.0001:
                 return str(int(round(num)))
             else:
-                # Форматируем до 3 значащих цифр
                 if abs(num) >= 100:
                     return f"{num:.1f}"
                 elif abs(num) >= 10:
@@ -281,17 +329,13 @@ class DataManagement:
             return str(value)
     
     def _get_db_connection(self):
-        """Получить соединение с БД"""
         return sqlite3.connect(self.db_path)
     
     def _try_convert_to_float(self, value):
-        """Попытка преобразовать значение в число"""
         if value is None or value == 'NULL' or value == '':
             return None
         try:
-            # Если это строка, пробуем преобразовать
             if isinstance(value, str):
-                # Заменяем запятую на точку
                 value = value.replace(',', '.')
                 return float(value)
             return float(value)
@@ -299,16 +343,31 @@ class DataManagement:
             return None
     
     def _load_experiments_list(self):
-        """Загрузить список всех экспериментов из БД"""
         try:
             with self._get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT EXP_ID, OPERATOR_FIO, EXP_DATE, CREATE_DATE 
-                    FROM Exp_info 
-                    ORDER BY EXP_DATE DESC
-                """)
-                experiments = cursor.fetchall()
+                
+                cursor.execute("PRAGMA table_info(Exp_info)")
+                columns = cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                has_description = 'DESCRIPTION' in column_names
+                
+                # Получаем все эксперименты с описанием
+                if has_description:
+                    cursor.execute("""
+                        SELECT EXP_ID, OPERATOR_FIO, EXP_DATE, CREATE_DATE, DESCRIPTION
+                        FROM Exp_info 
+                        ORDER BY EXP_DATE DESC
+                    """)
+                    experiments = cursor.fetchall()
+                else:
+                    cursor.execute("""
+                        SELECT EXP_ID, OPERATOR_FIO, EXP_DATE, CREATE_DATE
+                        FROM Exp_info 
+                        ORDER BY EXP_DATE DESC
+                    """)
+                    experiments = cursor.fetchall()
                 
                 if not experiments:
                     self.operator_combo['values'] = []
@@ -317,18 +376,28 @@ class DataManagement:
                 
                 # Группируем по операторам
                 operators = {}
-                for exp_id, operator_fio, exp_date, create_date in experiments:
+                for exp_row in experiments:
+                    exp_id = exp_row[0]
+                    operator_fio = exp_row[1]
+                    exp_date = exp_row[2]
+                    create_date = exp_row[3]
+                    description = exp_row[4] if len(exp_row) > 4 else "Нет описания"
+                    
                     if operator_fio not in operators:
                         operators[operator_fio] = []
-                    # Форматируем дату для отображения
+                    
                     exp_date_str = self._format_datetime(exp_date) if exp_date else "дата не указана"
-                    end_date_str = self._format_datetime(create_date) if create_date else "активен"
-                    exp_str = f"ID:{exp_id} | {exp_date_str} | {end_date_str}"
-                    operators[operator_fio].append((exp_id, exp_str))
+                    
+                    # Обрезаем описание, если оно слишком длинное
+                    desc_short = description[:50] + "..." if len(description) > 50 else description
+                    
+                    # Формат: ID | Дата | Описание
+                    exp_str = f"ID:{exp_id} | {exp_date_str} | {desc_short}"
+                    operators[operator_fio].append((exp_id, exp_str, description))
                 
-                # Сохраняем данные
                 self.operators_data = operators
                 operator_list = list(operators.keys())
+                operator_list.sort()
                 self.operator_combo['values'] = operator_list
                 
                 if operator_list:
@@ -339,31 +408,28 @@ class DataManagement:
             messagebox.showerror("Ошибка БД", f"Не удалось загрузить список экспериментов: {e}")
     
     def _on_operator_selected(self, event=None):
-        """При выборе оператора - обновить список его экспериментов"""
         # Очищаем поля фильтра
         self.filter_min_var.set("")
         self.filter_max_var.set("")
         
         operator = self.operator_var.get()
         if operator and operator in self.operators_data:
-            experiments = [exp_str for exp_id, exp_str in self.operators_data[operator]]
+            experiments = [exp_str for exp_id, exp_str, desc in self.operators_data[operator]]
+            experiments.sort(reverse=True)
             self.exp_combo['values'] = experiments
             if experiments:
                 self.exp_combo.set(experiments[0])
                 self._on_experiment_selected()
 
     def _on_experiment_selected(self, event=None):
-        """При выборе эксперимента - загрузить данные"""
         # Очищаем поля фильтра
         self.filter_min_var.set("")
         self.filter_max_var.set("")
         
         exp_str = self.exp_var.get()
-        
         if not exp_str:
             return
         
-        # Извлекаем EXP_ID из строки
         try:
             exp_id = int(exp_str.split('|')[0].replace('ID:', '').strip())
             self.current_exp_id = exp_id
@@ -372,12 +438,10 @@ class DataManagement:
             messagebox.showerror("Ошибка", f"Не удалось определить ID эксперимента: {e}")
     
     def _load_experiment_data(self, exp_id):
-        """Загрузить данные эксперимента из БД"""
         try:
             with self._get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Получаем информацию об эксперименте
                 cursor.execute("""
                     SELECT OPERATOR_FIO, EXP_DATE, CREATE_DATE 
                     FROM Exp_info 
@@ -388,9 +452,10 @@ class DataManagement:
                 if exp_info:
                     self.current_operator, exp_date, create_date = exp_info
                     self.current_exp_date = self._format_datetime(exp_date)
-                    self.title = f"Управление данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}"
+                    self.title = f"Работа с данными - Эксперимент #{exp_id} | Оператор: {self.current_operator} | Дата: {self.current_exp_date}"
+                    if self.parent and hasattr(self.parent, 'master') and hasattr(self.parent.master, 'title'):
+                        self.parent.master.title(self.title)
                 
-                # Получаем все столбцы таблицы Measurements
                 cursor.execute("PRAGMA table_info(Measurements)")
                 all_columns = cursor.fetchall()
                 
@@ -398,18 +463,16 @@ class DataManagement:
                     messagebox.showwarning("Предупреждение", "Таблица Measurements не найдена в БД")
                     return
                 
-                # Определяем динамические столбцы
-                exclude_columns = {'id', 'EXP_ID', 'FRAME_NUM', 'FRAME_TIME'}
+                exclude_columns = {'id', 'EXP_ID'}
                 data_columns = [col[1] for col in all_columns if col[1] not in exclude_columns]
                 
                 if not data_columns:
                     messagebox.showwarning("Предупреждение", "В таблице Measurements нет столбцов с данными")
                     return
                 
-                # Загружаем данные
                 columns_str = ', '.join(data_columns)
                 cursor.execute(f"""
-                    SELECT FRAME_NUM, FRAME_TIME, {columns_str}
+                    SELECT {columns_str}
                     FROM Measurements 
                     WHERE EXP_ID = ?
                     ORDER BY FRAME_NUM
@@ -420,144 +483,142 @@ class DataManagement:
                 if not rows:
                     messagebox.showinfo("Информация", f"В эксперименте #{exp_id} нет данных")
                     self.current_data = []
-                    self.current_columns = ['Номер кадра', 'Время кадра'] + data_columns
+                    self.current_columns = data_columns
                     self.original_data = []
+                    self.original_error_flags = []
                     self._update_table()
                     return
                 
-                # Преобразуем данные
+                # Преобразуем данные и проверяем ошибки
                 converted_rows = []
+                error_flags = []
                 for row in rows:
                     converted_row = []
+                    row_dict = {}
                     for i, value in enumerate(row):
-                        if i == 0:  # FRAME_NUM
-                            converted_row.append(value)
-                        elif i == 1:  # FRAME_TIME
+                        col_name = data_columns[i]
+                        if col_name == 'FRAME_TIME':
                             converted_row.append(self._format_datetime(value))
+                        elif col_name == 'FRAME_NUM':
+                            try:
+                                converted_row.append(int(float(value)) if value is not None else None)
+                            except (ValueError, TypeError):
+                                converted_row.append(None)
                         else:
-                            converted_row.append(self._try_convert_to_float(value))
+                            float_val = self._try_convert_to_float(value)
+                            converted_row.append(float_val)
+                            row_dict[col_name] = float_val
                     converted_rows.append(converted_row)
+                    
+                    # Проверяем наличие ошибок в строке
+                    has_error = self._check_row_has_error(row_dict)
+                    error_flags.append(has_error)
                 
-                # Сохраняем данные
-                self.current_columns = ['Номер кадра', 'Время кадра'] + data_columns
+                self.current_columns = data_columns
                 self.current_data = converted_rows
                 self.original_data = [row[:] for row in converted_rows]
+                self.original_error_flags = error_flags[:]
                 
-                # Рассчитываем средние значения
-                self._calculate_averages(data_columns, converted_rows)
+                # Создаем словарь соответствия русских названий английским для фильтрации
+                self.filter_channel_map = {}
+                for col in self.current_columns:
+                    if col not in ['FRAME_NUM', 'FRAME_TIME']:
+                        rus_name = self._get_russian_column_name(col)
+                        self.filter_channel_map[rus_name] = col
                 
-                # Обновляем таблицу
                 self._update_table()
                 
-                # Обновляем список каналов для фильтрации
-                self.filter_channel_combo['values'] = data_columns
-                if data_columns:
-                    self.filter_channel_combo.set(data_columns[0])
+                # Обновляем список каналов для фильтрации (включая Кадр)
+                filter_columns = ['Кадр'] + [self._get_russian_column_name(col) for col in data_columns if col not in ['FRAME_NUM', 'FRAME_TIME']]
+                self.filter_channel_combo['values'] = filter_columns
+                if filter_columns:
+                    self.filter_channel_combo.set(filter_columns[0])
                 
         except sqlite3.Error as e:
             messagebox.showerror("Ошибка БД", f"Не удалось загрузить данные: {e}")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
     
-    def _calculate_averages(self, data_columns, rows):
-        """Рассчитать и отобразить средние значения по каналам"""
-        # Сброс значений
-        for key in self.avg_values:
-            self.avg_values[key].set("—")
-        
-        if not rows:
-            return
-        
-        # Рассчитываем средние для каждого канала (максимум 12)
-        for i in range(min(len(data_columns), 12)):
-            values = []
-            for row in rows:
-                if i + 2 < len(row):  # Проверяем границы
-                    val = row[i + 2]  # +2 because first two columns are FRAME_NUM and FRAME_TIME
-                    if val is not None and isinstance(val, (int, float)):
-                        values.append(val)
-            
-            if values:
-                avg = sum(values) / len(values)
-                # Форматируем число
-                if abs(avg - round(avg)) < 0.0001:
-                    avg_str = str(int(round(avg)))
-                else:
-                    avg_str = f"{avg:.3f}"
-                
-                channel_key = list(self.avg_values.keys())[i]
-                self.avg_values[channel_key].set(avg_str)
-    
     def _update_table(self):
-        """Обновить таблицу с текущими данными"""
-        # Очищаем текущие данные
         for item in self.tree.get_children():
             self.tree.delete(item)
         
         if not self.current_data or not self.current_columns:
+            self._sync_avg_table()
             return
         
-        # Настраиваем колонки
+        self.display_columns = [self._get_russian_column_name(col) for col in self.current_columns]
+        
         self.tree['columns'] = self.current_columns
-        for col in self.current_columns:
-            self.tree.heading(col, text=col, command=lambda c=col: self._sort_by_column(c))
-            # Устанавливаем ширину колонок
-            if col == 'Время кадра':
+        for i, col in enumerate(self.current_columns):
+            display_name = self.display_columns[i]
+            self.tree.heading(col, text=display_name, command=lambda c=col: self._sort_by_column(c))
+            
+            if col == 'FRAME_TIME':
                 self.tree.column(col, width=180, minwidth=150)
-            elif col == 'Номер кадра':
+            elif col == 'FRAME_NUM':
                 self.tree.column(col, width=100, minwidth=80)
             else:
                 self.tree.column(col, width=120, minwidth=100)
         
-        # Вставляем данные
-        for row in self.current_data:
-            # Форматируем значения для отображения
+        # Вставляем данные с подсветкой ошибочных строк
+        for i, row in enumerate(self.current_data):
             str_row = []
-            for i, val in enumerate(row):
-                if i == 0:  # Номер кадра
-                    str_row.append(str(val))
-                elif i == 1:  # Время кадра
-                    str_row.append(val)
+            for j, val in enumerate(row):
+                col_name = self.current_columns[j]
+                if col_name == 'FRAME_NUM':
+                    str_row.append(str(val) if val is not None else "—")
+                elif col_name == 'FRAME_TIME':
+                    str_row.append(val if val else "—")
                 else:
                     str_row.append(self._format_number(val))
-            self.tree.insert('', tk.END, values=str_row)
+            
+            # Проверяем, есть ли ошибка в этой строке
+            if i < len(self.original_error_flags) and self.original_error_flags[i]:
+                self.tree.insert('', tk.END, values=str_row, tags=('error',))
+            else:
+                self.tree.insert('', tk.END, values=str_row)
         
-        # Растягиваем колонки после обновления данных
+        self._sync_avg_table()
         self.root.update_idletasks()
         self._resize_tree_columns()
     
     def _sort_by_column(self, col):
-        """Сортировка по колонке (вызывается при клике на заголовок)"""
-        # Определяем индекс колонки
         col_index = self.current_columns.index(col)
         
-        # Определяем направление сортировки
+        # Сохраняем соответствие данных и флагов ошибок
+        paired = list(zip(self.current_data, self.original_error_flags))
+        
         if self.last_sort_column == col:
             self.last_sort_reverse = not self.last_sort_reverse
         else:
             self.last_sort_column = col
             self.last_sort_reverse = False
         
-        # Сортируем данные
-        def get_sort_key(row):
+        def get_sort_key(item):
+            row = item[0]
+            if col_index >= len(row):
+                return float('inf') if self.last_sort_reverse else float('-inf')
             val = row[col_index]
             if val is None or val == '—':
                 return float('inf') if self.last_sort_reverse else float('-inf')
             try:
-                # Пробуем преобразовать в число
                 if isinstance(val, str):
-                    # Убираем пробелы и заменяем запятую
                     val_clean = val.replace(' ', '').replace(',', '.')
                     return float(val_clean)
                 return float(val)
             except (ValueError, TypeError):
                 return str(val)
         
-        self.current_data.sort(key=get_sort_key, reverse=self.last_sort_reverse)
+        paired.sort(key=get_sort_key, reverse=self.last_sort_reverse)
+        
+        # Разделяем обратно
+        self.current_data = [item[0] for item in paired]
+        self.original_error_flags = [item[1] for item in paired]
+        
         self._update_table()
     
     def _on_tree_click(self, event):
-        """Обработка клика по заголовку таблицы для сортировки (альтернативный метод)"""
         region = self.tree.identify_region(event.x, event.y)
         if region == "heading":
             column = self.tree.identify_column(event.x)
@@ -568,7 +629,6 @@ class DataManagement:
                     self._sort_by_column(col_name)
     
     def _apply_filter(self):
-        """Применить фильтр к данным"""
         channel = self.filter_channel_var.get()
         min_val = self.filter_min_var.get().strip()
         max_val = self.filter_max_var.get().strip()
@@ -581,17 +641,26 @@ class DataManagement:
             messagebox.showwarning("Предупреждение", "Укажите хотя бы одну границу диапазона")
             return
         
-        if channel not in self.current_columns:
-            messagebox.showwarning("Предупреждение", "Выбранный канал не найден в данных")
-            return
+        # Начинаем с оригинальных данных
+        filtered_data = [row[:] for row in self.original_data]
+        filtered_error_flags = self.original_error_flags[:]
         
-        col_index = self.current_columns.index(channel)
-        filtered_data = []
+        # Определяем индекс колонки по русскому названию
+        if channel == 'Кадр':
+            if 'FRAME_NUM' not in self.current_columns:
+                messagebox.showwarning("Предупреждение", "Столбец 'Кадр' не найден")
+                return
+            col_index = self.current_columns.index('FRAME_NUM')
+            is_frame_filter = True
+        else:
+            # Получаем английское название канала из словаря соответствия
+            if channel not in self.filter_channel_map:
+                messagebox.showwarning("Предупреждение", f"Канал '{channel}' не найден в данных")
+                return
+            eng_channel_name = self.filter_channel_map[channel]
+            col_index = self.current_columns.index(eng_channel_name)
+            is_frame_filter = False
         
-        # Используем оригинальные данные для фильтрации
-        source_data = self.original_data if self.original_data else self.current_data
-        
-        # Преобразуем границы в числа
         min_float = None
         max_float = None
         
@@ -604,75 +673,69 @@ class DataManagement:
             messagebox.showerror("Ошибка", "Границы диапазона должны быть числами")
             return
         
-        for row in source_data:
+        temp_data = []
+        temp_error_flags = []
+        for i, row in enumerate(filtered_data):
+            if col_index >= len(row):
+                continue
             value = row[col_index]
-            
-            # Пропускаем None значения
-            if value is None or value == '—':
+            if value is None:
                 continue
             
-            # Преобразуем значение в число
-            try:
-                if isinstance(value, str):
-                    float_val = float(value.replace(',', '.'))
-                else:
-                    float_val = float(value)
-            except (ValueError, TypeError):
-                continue
+            if is_frame_filter:
+                try:
+                    float_val = int(float(value))
+                except (ValueError, TypeError):
+                    continue
+            else:
+                try:
+                    float_val = float(value) if not isinstance(value, str) else float(value.replace(',', '.'))
+                except (ValueError, TypeError):
+                    continue
             
-            # Проверяем условия
             min_ok = True
             max_ok = True
-            
             if min_float is not None:
                 min_ok = float_val >= min_float
             if max_float is not None:
                 max_ok = float_val <= max_float
             
             if min_ok and max_ok:
-                filtered_data.append(row)
+                temp_data.append(row)
+                temp_error_flags.append(filtered_error_flags[i])
         
-        if filtered_data:
-            self.current_data = filtered_data
+        if temp_data:
+            self.current_data = temp_data
+            self.original_error_flags = temp_error_flags
             self._update_table()
-            messagebox.showinfo("Информация", f"Найдено {len(filtered_data)} записей из {len(self.original_data)}")
+            messagebox.showinfo("Информация", f"Найдено {len(temp_data)} записей из {len(self.original_data)}")
         else:
             messagebox.showinfo("Информация", "По заданному фильтру данные не найдены")
     
     def _reset_filter(self):
-        """Сбросить фильтр и показать все данные"""
         self.filter_min_var.set("")
         self.filter_max_var.set("")
         
         if self.original_data:
             self.current_data = [row[:] for row in self.original_data]
+            self.original_error_flags = self.original_error_flags[:] if hasattr(self, 'original_error_flags') else []
             self.last_sort_column = None
             self.last_sort_reverse = False
             self._update_table()
     
     def _sanitize_filename(self, filename):
-        """Очистка имени файла от недопустимых символов"""
-        # Заменяем недопустимые символы на подчеркивания
         return re.sub(r'[<>:"/\\|?*]', '_', filename)
     
     def _export_to_csv(self):
-        """Экспортировать текущие данные в CSV файл"""
         if not self.current_data or not self.current_columns:
             messagebox.showwarning("Предупреждение", "Нет данных для экспорта")
             return
         
-        # Формируем имя файла: Фамилия_Время_эксперимент
-        # Получаем фамилию из ФИО (первое слово)
         operator_surname = self.current_operator.split()[0] if self.current_operator else "Unknown"
-        
-        # Текущее время для имени файла
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Формируем имя файла
         filename = f"{operator_surname}_{current_time}_exp{self.current_exp_id}"
         filename = self._sanitize_filename(filename)
         
-        # Выбираем файл для сохранения
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
@@ -685,15 +748,9 @@ class DataManagement:
         try:
             with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 writer = csv.writer(csvfile)
-                
-                # Записываем заголовки
-                writer.writerow(self.current_columns)
-                
-                # Записываем данные
+                writer.writerow(self.display_columns)
                 for row in self.current_data:
                     writer.writerow(row)
-            
             messagebox.showinfo("Успех", f"Данные успешно экспортированы в файл:\n{file_path}")
-            
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить файл: {e}")

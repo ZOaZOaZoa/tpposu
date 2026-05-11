@@ -77,7 +77,9 @@ def main():
         Module(
             tab_name='Регистратор',
             module_class=Registrator,
-            kwargs={}
+            kwargs={
+                'db_path': db_path,
+            }
         ),
         Module(
             tab_name='Управление данными',
