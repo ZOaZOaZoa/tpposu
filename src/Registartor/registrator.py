@@ -1,4 +1,4 @@
-from .Plant_API import Plant, Registrator, Channel, ChannelParam, TKI_step, Action, Preprocessing
+from .Plant_API import Plant, Registrator, Channel, ChannelParam, TKI_step, Action, Preprocessing, MeasureError
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -87,6 +87,7 @@ class RegistratorGUI:
         self.tree_frame.pack(fill=tk.BOTH, expand=True)
         
         self.tree = ttk.Treeview(self.tree_frame, show='headings')
+        self.tree.tag_configure('error', background='red')
         self.vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         self.hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=self.vsb.set, xscrollcommand=self.hsb.set)
@@ -232,6 +233,11 @@ class RegistratorGUI:
         
         # Добавляем в таблицу в главном потоке
         def add_row():
+            tags = list()
+            if self.registrator.measure_status == MeasureError.PosControl:
+                tags.append('error')
+            self.tree.insert('', 'end', values=row_data, tags=tags)
+            
             # Вставляем в начало таблицы (сверху новые кадры)
             self.tree.insert('', 'end', values=row_data)
             
